@@ -13,3 +13,12 @@ services:
       - 1234:5432
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  nats:
+    image: nats-streaming:latest
+    container_name: nats
+    ports:
+      - "4222:4222"
+    environment:
+      - STAN_CLUSTER_ID=orders
+    command: ["--cluster_id=orders"]
+    
