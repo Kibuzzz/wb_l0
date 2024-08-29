@@ -2,7 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"wb_l0/internal/models"
+)
+
+var (
+	ErrorNotFound = errors.New("order not found")
 )
 
 type Repo interface {

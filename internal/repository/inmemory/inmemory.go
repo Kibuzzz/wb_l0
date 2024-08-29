@@ -14,9 +14,10 @@ type InMemory struct {
 	mu    *sync.Mutex
 }
 
-func New(ctx context.Context) *InMemory {
+func New(ctx context.Context, db repository.Repo) *InMemory {
 	inMemory := &InMemory{
 		store: make(map[string]models.Order),
+		db:    db,
 		mu:    &sync.Mutex{},
 	}
 	err := inMemory.loadDB(ctx)
@@ -38,9 +39,17 @@ func (i *InMemory) GetOrderByID(ctx context.Context, orderUID string) (models.Or
 	defer i.mu.Unlock()
 	order, exist := i.store[orderUID]
 	if !exist {
-		return models.Order{}, fmt.Errorf("orderd with %s UID does not exist", orderUID)
+		return models.Order{}, repository.ErrorNotFound
 	}
 	return order, nil
+}
+
+func (i *InMemory) AllOrders(ctx context.Context) ([]models.Order, error) {
+	orders := []models.Order{}
+	for _, order := range i.store {
+		orders = append(orders, order)
+	}
+	return orders, nil
 }
 
 func (i *InMemory) loadDB(ctx context.Context) error {
