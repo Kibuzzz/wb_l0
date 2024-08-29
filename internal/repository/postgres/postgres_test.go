@@ -14,81 +14,6 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func getTestData() models.Order {
-	var testDelivery = models.Delivery{
-		OrderUID: "test_order_uid",
-		Name:     "John Doe",
-		Phone:    "+1234567890",
-		Zip:      "123456",
-		City:     "Test City",
-		Address:  "123 Test Street",
-		Region:   "Test Region",
-		Email:    "john.doe@example.com",
-	}
-
-	var testPayment = models.Payment{
-		OrderUID:     "test_order_uid",
-		Transaction:  "test_transaction",
-		RequestID:    "test_request_id",
-		Currency:     "USD",
-		Provider:     "Test Provider",
-		Amount:       10000,
-		PaymentDt:    1622512320,
-		Bank:         "Test Bank",
-		DeliveryCost: 500,
-		GoodsTotal:   9500,
-		CustomFee:    200,
-	}
-
-	var testItem1 = models.Item{
-		OrderUID:    "test_order_uid",
-		ChrtID:      123456,
-		TrackNumber: "TESTTRACK123456",
-		Price:       1000,
-		Rid:         "test_rid_1",
-		Name:        "Test Item 1",
-		Sale:        10,
-		Size:        "L",
-		TotalPrice:  900,
-		NmID:        111222,
-		Brand:       "Test Brand",
-		Status:      1,
-	}
-
-	var testItem2 = models.Item{
-		OrderUID:    "test_order_uid",
-		ChrtID:      789012,
-		TrackNumber: "TESTTRACK789012",
-		Price:       2000,
-		Rid:         "test_rid_2",
-		Name:        "Test Item 2",
-		Sale:        5,
-		Size:        "M",
-		TotalPrice:  1900,
-		NmID:        333444,
-		Brand:       "Another Test Brand",
-		Status:      2,
-	}
-
-	var testOrder = models.Order{
-		OrderUID:          "test_order_uid",
-		TrackNumber:       "TESTTRACK123",
-		Entry:             "WEB",
-		Delivery:          testDelivery,
-		Payment:           testPayment,
-		Items:             []models.Item{testItem1, testItem2},
-		Locale:            "en-US",
-		InternalSignature: "signature123",
-		CustomerID:        "customer123",
-		DeliveryService:   "Test Delivery Service",
-		Shardkey:          "test_shardkey",
-		SmID:              1,
-		DateCreated:       time.Now().UTC(),
-		OofShard:          "test_oof_shard",
-	}
-	return testOrder
-}
-
 func TestCustomerRepository(t *testing.T) {
 	ctx := context.Background()
 
@@ -125,11 +50,22 @@ func TestCustomerRepository(t *testing.T) {
 	connString, err := postgresContainer.ConnectionString(context.Background(), "sslmode=disable")
 	assert.NoError(t, err, "failed to connect", connString)
 	repo := New(ctx, connString)
-	order := getTestData()
+
+	// test one order creation
+	order := models.GenerateRandomOrder()
 	err = repo.AddOrder(ctx, order)
 	assert.NoError(t, err, "failed to create item")
+
+	// test getting one order
 	recievedOrder, err := repo.GetOrderByID(ctx, order.OrderUID)
 	assert.NoError(t, err, "failed to get order")
 	assert.Equal(t, order, recievedOrder, "orders not matches")
 
+	// test All orders
+	second_order := models.GenerateRandomOrder()
+	err = repo.AddOrder(ctx, second_order)
+	assert.NoError(t, err, "failed to create item")
+	allOrders, err := repo.AllOrders(ctx)
+	assert.NoError(t, err, "failed to get order")
+	assert.Len(t, allOrders, 2, "order number is wrong")
 }
