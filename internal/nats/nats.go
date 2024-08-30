@@ -1,22 +1,15 @@
 package nats
 
 import (
-	"github.com/nats-io/nats.go"
-	"github.com/pkg/errors"
+	"fmt"
+
+	"github.com/nats-io/stan.go"
 )
 
-type Connection struct {
-	*nats.Conn
-}
-
-func Connect() (*Connection, error) {
-	conn, err := nats.Connect(nats.DefaultURL)
+func Conn() (stan.Conn, error) {
+	conn, err := stan.Connect("orders", "test_1")
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to connect nats")
+		return nil, fmt.Errorf("failed connet to nats: %w", err)
 	}
-	return &Connection{conn}, nil
-}
-
-func (c *Connection) Close() {
-	c.Conn.Close()
+	return conn, nil
 }
