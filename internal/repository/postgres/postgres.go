@@ -107,6 +107,7 @@ func (p *Postgres) GetOrderByID(ctx context.Context, orderUID string) (models.Or
 		&order.DateCreated,
 		&order.OofShard,
 	)
+
 	if err != nil {
 		fmt.Printf("Error fetching order by ID: %v\n", err)
 		return models.Order{}, err
@@ -136,7 +137,7 @@ func (p *Postgres) GetOrderByID(ctx context.Context, orderUID string) (models.Or
 	}
 	order.Items = items
 	// TODO: refactor here and in the tests
-	order.DateCreated = order.DateCreated.UTC()
+	// order.DateCreated = order.DateCreated.UTC()
 	return order, nil
 }
 

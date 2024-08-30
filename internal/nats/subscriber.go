@@ -17,7 +17,7 @@ type Subscriber struct {
 
 func NewSub(conn stan.Conn, repo repository.Repo) (*Subscriber, error) {
 
-	subsc := &Subscriber{}
+	subsc := &Subscriber{repo: repo}
 	sub, err := conn.Subscribe("orders", func(msg *stan.Msg) {
 		fmt.Println("recieved message")
 		subsc.recieveMessage(msg.Data)
