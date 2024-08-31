@@ -1,6 +1,7 @@
 package nats
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"time"
@@ -9,8 +10,7 @@ import (
 	"github.com/nats-io/stan.go"
 )
 
-func NewPub(sc stan.Conn, doneCh chan bool) {
-	// move ticker time to config
+func NewPub(sc stan.Conn, ctx context.Context) {
 	t := time.NewTicker(time.Second * 3)
 	for {
 		select {
@@ -20,15 +20,14 @@ func NewPub(sc stan.Conn, doneCh chan bool) {
 			if err != nil {
 				log.Println("error marshalling order: %w", err)
 			}
-			// move cluster id to config
 			err = sc.Publish("orders", bytes)
 			if err != nil {
 				log.Fatal("failed to publish", err.Error())
 			} else {
-				log.Println("successfully published")
+				log.Printf("successfully published: %s\n", order.OrderUID)
 			}
-		case <-doneCh:
-			// TODO: complete gracefull shutdown
+		case <-ctx.Done():
+			log.Println("publisher shutdowned")
 			return
 		}
 	}

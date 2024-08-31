@@ -20,7 +20,7 @@ func New(ctx context.Context, db repository.Repo) *InMemory {
 		db:    db,
 		mu:    &sync.Mutex{},
 	}
-	err := inMemory.loadDB(ctx)
+	err := inMemory.LoadDB(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -52,7 +52,7 @@ func (i *InMemory) AllOrders(ctx context.Context) ([]models.Order, error) {
 	return orders, nil
 }
 
-func (i *InMemory) loadDB(ctx context.Context) error {
+func (i *InMemory) LoadDB(ctx context.Context) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 

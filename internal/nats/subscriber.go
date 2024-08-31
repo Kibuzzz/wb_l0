@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"time"
 	"wb_l0/internal/models"
 	"wb_l0/internal/repository"
 
@@ -15,21 +17,21 @@ type Subscriber struct {
 	repo repository.Repo
 }
 
-func NewSub(conn stan.Conn, repo repository.Repo) (*Subscriber, error) {
+func NewSub(conn stan.Conn, subj string, repo repository.Repo) error {
 
 	subsc := &Subscriber{repo: repo}
-	sub, err := conn.Subscribe("orders", func(msg *stan.Msg) {
-		fmt.Println("recieved message")
+	sub, err := conn.Subscribe(subj, func(msg *stan.Msg) {
+		log.Println("recieved message")
 		subsc.recieveMessage(msg.Data)
 
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to subscribe: %w", err)
+		return fmt.Errorf("failed to subscribe: %w", err)
 	}
 
 	subsc.sub = sub
 
-	return subsc, nil
+	return nil
 }
 
 func (s *Subscriber) recieveMessage(msg []byte) error {
@@ -40,7 +42,10 @@ func (s *Subscriber) recieveMessage(msg []byte) error {
 		return fmt.Errorf("failed to unmarshall: %w", err)
 	}
 
-	err = s.repo.AddOrder(context.TODO(), order)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	err = s.repo.AddOrder(ctx, order)
 	if err != nil {
 		return fmt.Errorf("failed to add order to repo: %w", err)
 	}

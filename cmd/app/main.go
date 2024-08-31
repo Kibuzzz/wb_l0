@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
-	"os"
+	"net/http"
 	"os/signal"
 	"syscall"
+	"time"
+	"wb_l0/internal/config"
 	"wb_l0/internal/nats"
 	"wb_l0/internal/repository/inmemory"
 	pg "wb_l0/internal/repository/postgres"
@@ -14,48 +18,55 @@ import (
 
 func main() {
 
-	ctx, cancel := context.WithCancel(context.Background())
+	conf := config.Get()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	doneCh := make(chan bool)
-
-	conn, err := nats.Conn()
+	conn, err := nats.Conn(conf)
 	if err != nil {
-		log.Fatal("failed to connect nats", err)
+		log.Fatalf("failed to connect nats: %s", err.Error())
 	}
 
-	// move dsn to config
-	repo := pg.New(ctx, "postgres://test:test@localhost:1234/orders?sslmode=disable")
+	repo := pg.New(ctx, conf.Database.DSN)
 
-	// todo
-	go nats.NewPub(conn, doneCh)
+	go nats.NewPub(conn, ctx)
 
-	subscriber, err := nats.NewSub(conn, repo)
+	err = nats.NewSub(conn, conf.NATS.ClusterID, repo)
 	if err != nil {
-		// refactor
-		panic(err)
+		log.Fatalf("failed to initialize NATS subscriber: %v", err)
 	}
-	_ = subscriber
 
 	cache := inmemory.New(ctx, repo)
 
-	server := server.New(repo, cache)
-	server.Run()
+	addr := fmt.Sprintf("%s:%s", conf.Server.Host, conf.Server.Port)
+	server := server.New(repo, cache, addr)
 
 	go func() {
-		<-sig
-		cancel()
-		// stop server
-		err := server.Shutdown(context.TODO())
-		if err != nil {
-			log.Fatalf("failed to shutdown server: %s", err.Error())
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("failed to start server: %v", err)
 		}
-		// stop chache
-		// stop repo
-		// stop nats
-		// stop subscriber
-		// stop publisher
 	}()
+
+	<-ctx.Done()
+	log.Println("Received shutdown signal, starting graceful shutdown...")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("failed to shutdown server gracefully: %v", err)
+	} else {
+		log.Println("server shut down gracefully")
+	}
+
+	if err := conn.Close(); err != nil {
+		log.Printf("failed to close NATS connection: %v", err)
+	} else {
+		log.Println("NATS connection closed gracefully")
+	}
+
+	repo.Close()
+	log.Println("repository closed gracefully")
+	log.Println("shut down completed")
 }

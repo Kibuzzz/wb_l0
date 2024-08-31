@@ -2,11 +2,14 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"wb_l0/internal/models"
+	"wb_l0/internal/repository"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -109,11 +112,14 @@ func (p *Postgres) GetOrderByID(ctx context.Context, orderUID string) (models.Or
 	)
 
 	if err != nil {
-		fmt.Printf("Error fetching order by ID: %v\n", err)
-		return models.Order{}, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Order{}, repository.ErrorNotFound
+		} else {
+			fmt.Printf("Error fetching order by ID: %v\n", err)
+			return models.Order{}, fmt.Errorf("failed to get order: %w", err)
+		}
 	}
 
-	// Fetch and assign Delivery
 	delivery, err := p.getDelivery(ctx, order.OrderUID)
 	if err != nil {
 		fmt.Printf("Error fetching delivery: %v\n", err)
@@ -121,7 +127,6 @@ func (p *Postgres) GetOrderByID(ctx context.Context, orderUID string) (models.Or
 	}
 	order.Delivery = delivery
 
-	// Fetch and assign Payment
 	payment, err := p.getPayment(ctx, order.OrderUID)
 	if err != nil {
 		fmt.Printf("Error fetching payment: %v\n", err)
@@ -129,15 +134,12 @@ func (p *Postgres) GetOrderByID(ctx context.Context, orderUID string) (models.Or
 	}
 	order.Payment = payment
 
-	// Fetch and assign Items
-	items, err := p.getItems(ctx, order.OrderUID) // Use orderUID instead of trackNumber
+	items, err := p.getItems(ctx, order.OrderUID)
 	if err != nil {
 		fmt.Printf("Error fetching items: %v\n", err)
 		return models.Order{}, err
 	}
 	order.Items = items
-	// TODO: refactor here and in the tests
-	// order.DateCreated = order.DateCreated.UTC()
 	return order, nil
 }
 
@@ -155,7 +157,6 @@ func (p *Postgres) AllOrders(ctx context.Context) ([]models.Order, error) {
 	for rows.Next() {
 		order := models.Order{}
 
-		// Scan the order data
 		err := rows.Scan(
 			&order.OrderUID,
 			&order.TrackNumber,
@@ -174,7 +175,6 @@ func (p *Postgres) AllOrders(ctx context.Context) ([]models.Order, error) {
 			return nil, err
 		}
 
-		// Fetch and assign Delivery
 		delivery, err := p.getDelivery(ctx, order.OrderUID)
 		if err != nil {
 			fmt.Printf("Error fetching delivery for order %v: %v\n", order.OrderUID, err)
@@ -182,7 +182,6 @@ func (p *Postgres) AllOrders(ctx context.Context) ([]models.Order, error) {
 		}
 		order.Delivery = delivery
 
-		// Fetch and assign Payment
 		payment, err := p.getPayment(ctx, order.OrderUID)
 		if err != nil {
 			fmt.Printf("Error fetching payment for order %v: %v\n", order.OrderUID, err)
@@ -190,7 +189,6 @@ func (p *Postgres) AllOrders(ctx context.Context) ([]models.Order, error) {
 		}
 		order.Payment = payment
 
-		// Fetch and assign Items
 		items, err := p.getItems(ctx, order.OrderUID)
 		if err != nil {
 			fmt.Printf("Error fetching items for order %v: %v\n", order.OrderUID, err)
@@ -198,14 +196,11 @@ func (p *Postgres) AllOrders(ctx context.Context) ([]models.Order, error) {
 		}
 		order.Items = items
 
-		// Convert date to UTC
 		order.DateCreated = order.DateCreated.UTC()
 
-		// Append the order to the orders slice
 		orders = append(orders, order)
 	}
 
-	// Check if there were any errors during iteration
 	if err = rows.Err(); err != nil {
 		fmt.Printf("Error during rows iteration: %v\n", err)
 		return nil, err
@@ -244,6 +239,7 @@ func (p *Postgres) createDelivery(ctx context.Context, delivery models.Delivery)
 
 func (p *Postgres) getDelivery(ctx context.Context, orderUID string) (models.Delivery, error) {
 	sql := `SELECT 
+		delivery_id,
 		order_uid, 
 		name, 
 		phone, 
@@ -259,6 +255,7 @@ func (p *Postgres) getDelivery(ctx context.Context, orderUID string) (models.Del
 
 	var delivery models.Delivery
 	err := row.Scan(
+		&delivery.DeliveryID,
 		&delivery.OrderUID,
 		&delivery.Name,
 		&delivery.Phone,
@@ -312,6 +309,7 @@ func (p *Postgres) createPayment(ctx context.Context, payment models.Payment) er
 
 func (p *Postgres) getPayment(ctx context.Context, orderUID string) (models.Payment, error) {
 	sql := `SELECT 
+		payment_id,
         order_uid, 
         transaction, 
         request_id, 
@@ -330,6 +328,7 @@ func (p *Postgres) getPayment(ctx context.Context, orderUID string) (models.Paym
 
 	var payment models.Payment
 	err := row.Scan(
+		&payment.PaymentID,
 		&payment.OrderUID,
 		&payment.Transaction,
 		&payment.RequestID,
@@ -388,6 +387,7 @@ func (p *Postgres) createItem(ctx context.Context, orderUID string, item models.
 
 func (p *Postgres) getItems(ctx context.Context, orderUID string) ([]models.Item, error) {
 	sql := `SELECT 
+		item_id,
 		order_uid,
         chrt_id, 
         track_number, 
@@ -414,6 +414,7 @@ func (p *Postgres) getItems(ctx context.Context, orderUID string) ([]models.Item
 	for rows.Next() {
 		var item models.Item
 		err := rows.Scan(
+			&item.ItemID,
 			&item.OrderUID,
 			&item.ChrtID,
 			&item.TrackNumber,

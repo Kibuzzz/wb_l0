@@ -1,0 +1,10 @@
+database:
+  dsn: "postgres://test:test@localhost:1234/orders?sslmode=disable"
+
+server:
+  host: 0.0.0.0
+  port: 8081
+
+nats:
+  cluster_id: "orders"
+  client_id: "testID"

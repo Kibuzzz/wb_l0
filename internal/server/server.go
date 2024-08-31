@@ -1,7 +1,7 @@
 package server
 
 import (
-	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -12,31 +12,19 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type Server struct {
-	srv *http.Server
-}
-
 type router struct {
 	router *chi.Mux
 	repo   repository.Repo
 	cache  repository.Repo
 }
 
-func New(repo repository.Repo, cache repository.Repo) Server {
+func New(repo repository.Repo, cache repository.Repo, addr string) *http.Server {
 	r := router{
 		repo:  repo,
 		cache: cache,
 	}
 	r.initRoutes()
-	return Server{&http.Server{Addr: "0.0.0.0:8081", Handler: r.router}}
-}
-
-func (s *Server) Run() error {
-	return http.ListenAndServe("localhost:8081", s.srv.Handler)
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-	return s.srv.Shutdown(ctx)
+	return &http.Server{Addr: addr, Handler: r.router}
 }
 
 func (s *router) initRoutes() {
@@ -50,29 +38,50 @@ func (s *router) getOrder(w http.ResponseWriter, r *http.Request) {
 	orderUID := chi.URLParam(r, "orderUID")
 
 	order, err := s.cache.GetOrderByID(r.Context(), orderUID)
-
 	if err == nil {
-		log.Default().Println("order from cache", order)
-		fmt.Fprint(w, order)
+		log.Println("Order found in cache:", order)
+		writeJSONResponse(w, http.StatusOK, order)
 		return
 	}
 
-	// internal error
 	if !errors.Is(err, repository.ErrorNotFound) {
-		fmt.Fprintf(w, "error getting order from cache: %v", err)
+		log.Printf("Error fetching order from cache: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	order, err = s.repo.GetOrderByID(r.Context(), orderUID)
+
 	if err != nil {
-		fmt.Fprintf(w, "error getting order from repo: %v", err)
+		log.Printf("Error fetching order from repository: %v", err)
+		if errors.Is(err, repository.ErrorNotFound) {
+			writeJSONResponse(w, http.StatusNotFound, fmt.Sprintf("Order with UID %s not exists", orderUID))
+			return
+		} else {
+			http.Error(w, "Order not found", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if !errors.Is(err, repository.ErrorNotFound) {
+		log.Printf("Error fetching order from cache: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	err = s.cache.AddOrder(r.Context(), order)
-	if err != nil {
-		fmt.Fprintf(w, "error adding order to cache: %v", err)
-		return
+	if err := s.cache.AddOrder(r.Context(), order); err != nil {
+		log.Printf("Error adding order to cache: %v", err)
 	}
-	fmt.Fprint(w, order)
+
+	writeJSONResponse(w, http.StatusOK, order)
+}
+
+func writeJSONResponse(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Failed to encode JSON response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
